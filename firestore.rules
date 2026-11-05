@@ -1,0 +1,38 @@
+rules_version = '2';
+// Quy tắc bảo mật cho app "Pet khỏe - Thử thách 3 phút mỗi ngày cùng Pet"
+// Tài khoản Admin: tên đăng nhập "giaovien" (email nội bộ giaovien@3phutcungpet.app).
+// Nếu đổi teacherUsername hoặc emailDomain trong index.html thì sửa email ở dòng isAdmin() cho khớp.
+service cloud.firestore {
+  match /databases/{database}/documents {
+    function signedIn() { return request.auth != null; }
+    function isAdmin() { return signedIn() && request.auth.token.email == 'giaovien@3phutcungpet.app'; }
+
+    // Hồ sơ học sinh: chỉ chính chủ và Admin được xem, chỉ chính chủ được sửa
+    match /users/{uid} {
+      allow read: if signedIn() && (request.auth.uid == uid || isAdmin());
+      allow create, update: if signedIn() && request.auth.uid == uid;
+      allow delete: if isAdmin();
+    }
+
+    // Bảng thi đua theo lớp: mỗi lớp là một tài liệu, mỗi học sinh chỉ được sửa dòng của chính mình
+    match /classes/{cls} {
+      allow read: if signedIn();
+      allow create: if isAdmin() || (signedIn() && request.resource.data.keys().hasOnly([request.auth.uid]));
+      allow update: if isAdmin() || (signedIn() && request.resource.data.diff(resource.data).affectedKeys().hasOnly([request.auth.uid]));
+      allow delete: if isAdmin();
+    }
+
+    // Buổi tập, câu trả lời cảm xúc và góp ý: học sinh chỉ xem của mình, Admin xem tất cả để tải dữ liệu nghiên cứu
+    match /sessions/{id} {
+      allow create: if signedIn() && request.resource.data.uid == request.auth.uid;
+      allow read: if signedIn() && (resource.data.uid == request.auth.uid || isAdmin());
+      allow update, delete: if isAdmin();
+    }
+
+    // Cài đặt chung (động tác, video nhảy, ngưỡng chấm): mọi người đọc, chỉ Admin sửa
+    match /config/{doc} {
+      allow read: if signedIn();
+      allow write: if isAdmin();
+    }
+  }
+}
